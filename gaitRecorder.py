@@ -1,3 +1,16 @@
+#!/usr/bin/env python
+
+"""
+This is a gait recorder of the SMORES robot in Gazebo
+For more information, please visit https://github.com/jimjing/SMORESGaitRecorder
+This tool uses Python versions of all defined Gazebo protobuf messages
+The GUI of this tool is supported by Panda3d (panda3d.org)
+
+Last update: Apr. 20th, 2014
+Author: Jim Jing
+"""
+
+# For panda3d
 import direct.directbase.DirectStart as ds
 from direct.gui.DirectGui import *
 from direct.gui.OnscreenText import OnscreenText
@@ -6,6 +19,8 @@ try:
     ds.go()
 except Exception:
     pass
+
+# General Importing
 import socket
 import time
 import sys
@@ -14,20 +29,21 @@ import threading
 import copy
 from datetime import datetime
 
+# Python version of gazebo protobuf
 from proto.packet_pb2     import Packet
 from proto.publish_pb2    import Publish
 from proto.request_pb2    import Request
 from proto.response_pb2   import Response
 from proto.pose_pb2       import Pose
 from proto.vector2d_pb2   import Vector2d
-from proto.vector3d_pb2   import Vector3d
-from proto.quaternion_pb2 import Quaternion
-from proto.model_pb2      import Model
-from proto.joint_pb2      import Joint
 from proto.subscribe_pb2  import Subscribe
+
 
 class Module(object):
     def __init__(self, name, ID):
+        """
+        A SMORES Module
+        """
         self.name = name
         self.ID = ID
         self.joints = [0.0,0.0,0.0,0.0]; # x,y,z,w
@@ -68,23 +84,32 @@ class GzCommunicator(object):
 
         self.s_reg = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.s_reg.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.s_reg.connect((self.MASTER_TCP_IP, self.MASTER_TCP_PORT))
+
+        # try to connect to gazebo server
+        succ = False
+        while not succ:
+            try:
+                self.s_reg.connect((self.MASTER_TCP_IP, self.MASTER_TCP_PORT))
+            except Exception as e:
+                print "Waiting for Gazebo server..."
+                time.sleep(2)
+            else:
+                succ = True
+
         self.s_reg.send(hex(pk.ByteSize()).rjust(8))
         self.s_reg.send(pk.SerializeToString())
 
-        print "wating for reply"
+        print "Wating for subscriber... "
         # Respond to a subscriber
         try:
             self.conn, address = s_sub.accept()
             data = self.conn.recv(self.TCP_BUFFER_SIZE)
-
         except Exception as e:
-            print "Cannot connect to the server."
+            print "Lost connection to Gazebo server."
             print e
             print
 
         else:
-            print "wating for reply"
             # Decode Incomming Packet
             pk_sub = Packet()
             pk_sub.ParseFromString(data[8:])
@@ -101,7 +126,7 @@ class GzCommunicator(object):
         self.s_reg.close()
 
     def SendJointValues(self,name, x, y, z, w):
-        """Function used to send 2D velocity command to gztopic"""
+        """Function used to send joints command to gztopic"""
         # Pack Data for Reply
         cmd_vel = Pose()
         cmd_vel.name = name
@@ -182,7 +207,15 @@ class GUI(object):
         self.slider4['value'] = self.current_m.joints[3]
 
     def loadConfig(self):
-        f = open("InitialConfiguration","r")
+        """
+        Load the InitialConfiguration file
+        """
+        try:
+            f = open("InitialConfiguration","r")
+        except IOError:
+            print "Please copy the InitialConfiguration to the Gait Recorder folder."
+            sys.exit(1)
+
         ID = 0
         data = f.readlines()
         for line in data:
@@ -243,8 +276,6 @@ class GUI(object):
         if self.current_m.joints != [x,y,z,w]:
             self.current_m.joints = [x,y,z,w]
             self.communicator.SendJointValues(name, x,y,z,w)
-            print x,y,z,w
-
 
     def run(self):
         run()
